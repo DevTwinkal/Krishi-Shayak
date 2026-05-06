@@ -17,24 +17,24 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   const langName = languageNames[language] || "English";
 
-  const prompt = `Provide current weather and agricultural insights for ${location} in India.
-Return a JSON object with these exact fields:
-- temp (number, Celsius)
-- condition (string in ${langName})
-- humidity (number, percentage)
-- windSpeed (number, km/h)
-- locationName (string)
-- riskLevel ("Low", "Medium", or "High" — disease risk based on weather)
-- farmingSuggestion (string in ${langName})
-- irrigationAdvice (string in ${langName})
-- sprayingAlert (string in ${langName})`;
+  const prompt = `Provide the current weather and agricultural insights for ${location} in India.
+  Return a JSON object with: 
+  - temp (number, Celsius)
+  - condition (string in ${langName})
+  - humidity (number, percentage)
+  - windSpeed (number, km/h)
+  - locationName (string)
+  - riskLevel (Low/Medium/High for disease based on weather)
+  - farmingSuggestion (advice in ${langName})
+  - irrigationAdvice (advice in ${langName})
+  - sprayingAlert (advice in ${langName})`;
 
   try {
-    const ai = new GoogleGenAI({ apiKey });
-    const result = await ai.models.generateContent({
+    const ai = new GoogleGenAI(apiKey);
+    const model = ai.getGenerativeModel({
       model: "gemini-1.5-flash",
-      contents: [{ role: "user", parts: [{ text: prompt }] }],
-      config: {
+      tools: [{ googleSearch: {} } as any],
+      generationConfig: {
         responseMimeType: "application/json",
         responseSchema: {
           type: Type.OBJECT,
@@ -54,7 +54,8 @@ Return a JSON object with these exact fields:
       },
     });
 
-    return res.status(200).json(JSON.parse(result.text() || "{}"));
+    const result = await model.generateContent(prompt);
+    return res.status(200).json(JSON.parse(result.response.text() || "{}"));
   } catch (error: any) {
     console.error("Weather insights failed:", error);
     return res.status(500).json({ error: error.message || "Weather insights failed" });

@@ -17,31 +17,32 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   const langName = languageNames[language] || "English";
 
-  const prompt = `Analyze this agricultural image specifically for the Indian agricultural context.
-1. Identify the plant/crop and variety common in India.
-2. Detect any pests or diseases with scientific precision.
-3. Provide a confidence score (0-100).
-4. Suggest organic (Prakritik kheti) and chemical (IPM based) treatments suitable for Indian farmers.
-5. Provide a brief explanation referencing ICAR/IARI research where relevant.
-
-IMPORTANT: Provide all text descriptions, plant names, and treatment details in ${langName}.`;
+  const prompt = `
+    Analyze this agricultural image specifically for the Indian agricultural context. 
+    1. Identify the plant/crop and variety common in India.
+    2. Detect any pests or diseases with scientific precision.
+    3. Provide a confidence score (0-100).
+    4. Suggest organic (Prakritik kheti) and chemical (IPM based) treatments suitable for Indian farmers.
+    5. Provide a brief explanation with reference to scientific reasoning or commonly cited agricultural research in India.
+    
+    IMPORTANT: You MUST provide all text descriptions, plant names, and treatment details in ${langName}.
+  `;
 
   try {
-    const ai = new GoogleGenAI({ apiKey });
-    const result = await ai.models.generateContent({
-      model: "gemini-1.5-flash",
+    const ai = new GoogleGenAI(apiKey);
+    const model = ai.getGenerativeModel({ model: "gemini-1.5-flash" });
+    const response = await model.generateContent({
       contents: [
         {
-          role: "user",
           parts: [
             { text: prompt },
             { inlineData: { data: base64Image, mimeType: "image/jpeg" } },
           ],
         },
       ],
-      config: {
+      generationConfig: {
         systemInstruction:
-          "You are a senior agricultural scientist specializing in Indian crops and pests. Your advice must be based on reputable research (ICAR, IARI) and methods suited to Indian climate and soil conditions.",
+          "You are a senior agricultural scientist specializing in Indian crops and pests. Your advice must be based on reputable research papers (e.g., ICAR, IARI) and scientifically proven methods suitable for the Indian climate and soil conditions.",
         responseMimeType: "application/json",
         responseSchema: {
           type: Type.OBJECT,
@@ -64,7 +65,8 @@ IMPORTANT: Provide all text descriptions, plant names, and treatment details in 
       },
     });
 
-    return res.status(200).json(JSON.parse(result.text() || "{}"));
+    const text = response.response.text();
+    return res.status(200).json(JSON.parse(text || "{}"));
   } catch (error: any) {
     console.error("Image Analysis failed:", error);
     return res.status(500).json({ error: error.message || "Image analysis failed" });
