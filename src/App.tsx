@@ -39,8 +39,10 @@ import {
   CloudRain
 } from 'lucide-react';
 import { useFirebase } from './components/FirebaseProvider';
-import { analyzePlantImage, chatWithExpert, enhanceImageQuality, getAIPoweredWeather } from './services/geminiService';
+import { analyzePlantImage, chatWithExpert, enhanceImageQuality, getAIPoweredWeather, generateEmbedding, cosineSimilarity, getAppSentientBriefing } from './services/geminiService';
 import { transliterateDevanagari } from './lib/transliterator';
+import { compressImage } from './lib/utils';
+import { agriVoice } from './services/voiceService';
 // import { fetchWeather, WeatherData, fetchWeatherByCity } from './services/weatherService';
 import ReactMarkdown from 'react-markdown';
 import { collection, addDoc, query, where, orderBy, onSnapshot, Timestamp, getDocFromServer, doc, deleteDoc } from 'firebase/firestore';
@@ -75,11 +77,25 @@ const AGRI_PHONETIC_MAP: Record<string, Record<string, string>> = {
     'organic': 'ऑर्गेनिक',
     'chemical': 'केमिकल',
     'spray': 'स्प्रे',
-    'yield': 'यील्ड'
-  }
+    'pa': 'यील्ड'
+    }
+    };
+
+    export const PREFERRED_VOICES: Record<string, string[]> = {
+  'hi': ['hi-IN-Neural2-A', 'hi-IN-Neural2-D', 'Google हिन्दी', 'hi-IN-Wavenet-A', 'hi-IN-Standard-A', 'Microsoft Hemant'],
+  'mr': ['Google मराठी', 'mr-IN-Wavenet-A', 'mr-IN-Standard-A', 'Microsoft Yashwant'],
+  'te': ['Google తెలుగు', 'te-IN-Standard-A', 'Microsoft Shruti'],
+  'ta': ['Google தமிழ்', 'ta-IN-Wavenet-A', 'ta-IN-Standard-A', 'Microsoft Valluvar'],
+  'bn': ['Google বাংলা', 'bn-IN-Wavenet-A', 'bn-IN-Standard-A', 'Microsoft Hemant'],
+  'gu': ['Google ગુજરાતી', 'gu-IN-Wavenet-A', 'gu-IN-Standard-A', 'Microsoft Kalpana'],
+  'kn': ['Google ಕನ್ನಡ', 'kn-IN-Wavenet-A', 'kn-IN-Standard-A', 'Microsoft Sapna'],
+  'ml': ['Google മലയാളം', 'ml-IN-Wavenet-A', 'ml-IN-Standard-A', 'Microsoft Midhun'],
+  'pa': ['Google ਪੰਜਾਬੀ', 'pa-IN-Wavenet-A', 'pa-IN-Standard-A', 'Microsoft Hemant'],
+  'en': ['en-IN-Neural2-A', 'en-IN-Neural2-D', 'en-US-Neural2-F', 'Google UK English Female', 'Google US English', 'en-IN-Wavenet-A', 'en-GB-Wavenet-A']
 };
 
-const prepareTextForSpeech = (text: string, lang: string, shouldTransliterate: boolean = false) => {
+    const prepareTextForSpeech = (text: string, lang: string, shouldTransliterate: boolean = false) => {
+
   let cleanText = text
     .replace(/^[\s]*[-+*][\s]+/gm, '') // Remove list markers
     .replace(/[#*`~]/g, '') // Remove Markdown symbols
@@ -152,6 +168,36 @@ export default function App() {
   const [chatFilePreview, setChatFilePreview] = useState<string | null>(null);
   const [isUploadingChatFile, setIsUploadingChatFile] = useState(false);
   const [lastSpeakableText, setLastSpeakableText] = useState<string>("");
+
+  useEffect(() => {
+    agriVoice.setLanguage(language);
+  }, [language]);
+
+  const speak = async (text: string, forceInterrupt = false) => {
+    if (!isVoiceEnabled && !forceInterrupt) return;
+    setLastSpeakableText(text);
+    if (forceInterrupt) agriVoice.stop();
+    await agriVoice.speak(text, () => setIsSpeaking(true), () => setIsSpeaking(false));
+  };
+
+  const handleBriefMe = async () => {
+    const stateData = {
+      userName: user?.displayName?.split(' ')[0] || 'Kisan Bhai',
+      location: weather?.locationName || manualLocation || 'your farm',
+      weather: weather,
+      recentDetection: detectionResult ? { plant: detectionResult.plantName, issue: detectionResult.issueDetected } : null
+    };
+    
+    setIsSpeaking(true);
+    try {
+      const briefing = await getAppSentientBriefing(stateData, language);
+      setLastSpeakableText(briefing);
+      await speak(briefing, true);
+    } catch (err) {
+      console.error("Briefing failed:", err);
+      setIsSpeaking(false);
+    }
+  };
   const [isOnboarded, setIsOnboarded] = useState(true); // Default true for now, will check in useEffect
   const currentUtteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
 
@@ -162,7 +208,16 @@ export default function App() {
     };
 
     const storedOnboard = localStorage.getItem(`onboarded_${user?.uid}`);
-    if (!storedOnboard && user) setIsOnboarded(false);
+    if (!storedOnboard && user) {
+      setIsOnboarded(false);
+      // Greet the user personally on first visit
+      const firstName = user.displayName?.split(' ')[0] || 'Farmer';
+      const welcomeMsg = language === 'hi' ? `नमस्ते ${firstName}! कृषि सहायक में आपका स्वागत है। मैं आपकी फसलों की देखभाल में कैसे मदद कर सकता हूँ?` :
+                         `Hello ${firstName}! Welcome to Krishi Shayak. How can I help you with your crops today?`;
+      setLastSpeakableText(welcomeMsg);
+      // Wait a bit for voices to load
+      setTimeout(() => speak(welcomeMsg), 1500);
+    }
 
     if ('speechSynthesis' in window) {
       window.speechSynthesis.getVoices();
@@ -789,7 +844,7 @@ export default function App() {
     setIsCameraActive(false);
   };
 
-  const capturePhoto = () => {
+  const capturePhoto = async () => {
     if (videoRef.current && canvasRef.current) {
       const video = videoRef.current;
       const canvas = canvasRef.current;
@@ -800,7 +855,8 @@ export default function App() {
         ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
         const dataUrl = canvas.toDataURL('image/jpeg');
         stopCamera();
-        handleBase64ImageAnalysis(dataUrl);
+        const compressedUrl = await compressImage(dataUrl);
+        handleBase64ImageAnalysis(compressedUrl);
       }
     }
   };
@@ -833,7 +889,17 @@ export default function App() {
       });
 
       if (result.issueDetected && result.explanation) {
-        const textToSpeak = `${result.plantName}. ${result.issueDetected}. ${result.explanation}. ${t.organicTreatment}: ${result.treatments.organic}. ${t.chemicalTreatment}: ${result.treatments.chemical}.`;
+        const tr = result.treatments;
+        // Language-specific conversational structure
+        const intro = language === 'hi' ? `मैंने फोटो का विश्लेषण किया है। आपके ${result.plantName} में ${result.issueDetected} की समस्या लग रही है।` : 
+                      language === 'mr' ? `मी फोटोचे विश्लेषण केले आहे. तुमच्या ${result.plantName} मध्ये ${result.issueDetected} ची समस्या असल्याचे दिसून येत आहे.` :
+                      `I've analyzed the photo. It looks like your ${result.plantName} has ${result.issueDetected}.`;
+        
+        const treatmentInfo = language === 'hi' ? `जैविक उपचार के लिए, ${tr.organic}। रासायनिक विकल्प के लिए, ${tr.chemical}।` :
+                             language === 'mr' ? `सेंद्रिय उपचारासाठी, ${tr.organic}। रासायनिक पर्यायासाठी, ${tr.chemical}।` :
+                             `For organic treatment, you can try ${tr.organic}. For chemical options, ${tr.chemical}.`;
+
+        const textToSpeak = `${intro} ${result.explanation} ${treatmentInfo}`;
         setLastSpeakableText(textToSpeak);
         speak(textToSpeak);
       }
@@ -860,8 +926,9 @@ export default function App() {
 
     setChatFile(file);
     const reader = new FileReader();
-    reader.onloadend = () => {
-      setChatFilePreview(reader.result as string);
+    reader.onloadend = async () => {
+      const compressedUrl = await compressImage(reader.result as string);
+      setChatFilePreview(compressedUrl);
     };
     reader.readAsDataURL(file);
   };
@@ -983,8 +1050,9 @@ export default function App() {
     if (!file || !user) return;
 
     const reader = new FileReader();
-    reader.onloadend = () => {
-      handleBase64ImageAnalysis(reader.result as string);
+    reader.onloadend = async () => {
+      const compressedUrl = await compressImage(reader.result as string);
+      handleBase64ImageAnalysis(compressedUrl);
     };
     reader.readAsDataURL(file);
   };
@@ -1026,88 +1094,38 @@ export default function App() {
     setChatFilePreview(null);
 
     try {
+      // --- Context Enhancement from Recent History ---
+      // Instead of client-side embedding search which is slow and hits quotas,
+      // we provide a concise summary of the last 3 reports for the AI to reason about.
+      let historyContext = "";
+      if (history.length > 0) {
+        const recentReports = history.slice(0, 3).map(r => 
+          `- ${new Date(r.timestamp.seconds * 1000).toLocaleDateString()}: Detected ${r.issueDetected} on ${r.plantName}`
+        ).join('\n');
+        historyContext = `\nRecent Activity History:\n${recentReports}`;
+      }
+
       const extraContext = `
+        Farmer Name: ${user?.displayName || 'Kisan Bhai'}
         Current Location: ${weather?.locationName || manualLocation}
         Weather: ${weather ? `${weather.temp}°C, ${weather.condition}, Humidity: ${weather.humidity}%` : 'Unknown'}
         Agricultural Risk: ${weather?.riskLevel || 'Unknown'}
         Last Detection: ${detectionResult ? `${detectionResult.plantName} - ${detectionResult.issueDetected}` : 'None'}
+        ${historyContext}
       `;
       
+      console.log("[Chat] Sending message with context:", extraContext);
       const response = await chatWithExpert(currentMessages, messageText, language, imageToSend, extraContext);
+      
+      if (!response) throw new Error("No response from AI expert.");
+
       setChatMessages([...newMessages, { role: 'model' as const, text: response }]);
       setLastSpeakableText(response);
       speak(response);
-    } catch (error) {
-      alert("Failed to send message.");
+    } catch (error: any) {
+      console.error("[Chat] Send failed:", error);
+      alert(`Failed to send message: ${error.message || 'Unknown error'}`);
     }
-  };
-
-  const speak = (text?: string, forceInterrupt: boolean = false) => {
-    if (!('speechSynthesis' in window)) return;
-    
-    // If text is provided, update the last speakable text
-    if (text) setLastSpeakableText(text);
-    
-    if (forceInterrupt) {
-      window.speechSynthesis.cancel();
-    }
-    
-    if (!isVoiceEnabled && !forceInterrupt) return;
-    
-    const textToRead = text || lastSpeakableText;
-    if (!textToRead) return;
-
-    const voiceLangs: Record<string, string> = {
-      hi: 'hi-IN', mr: 'mr-IN', te: 'te-IN', ta: 'ta-IN',
-      bn: 'bn-IN', gu: 'gu-IN', kn: 'kn-IN', ml: 'ml-IN',
-      pa: 'pa-IN', en: 'en-IN'
-    };
-    
-    const targetLang = voiceLangs[language] || 'en-IN';
-    const allVoices = window.speechSynthesis.getVoices();
-    
-    // Sort voices to put Google/natural ones first
-    const matchedVoices = [...allVoices]
-      .filter(v => v.lang === targetLang || v.lang.replace('_', '-').startsWith(language))
-      .sort((a, b) => {
-        const aGoogle = a.name.includes('Google');
-        const bGoogle = b.name.includes('Google');
-        if (aGoogle && !bGoogle) return -1;
-        if (!aGoogle && bGoogle) return 1;
-        return 0;
-      });
-    
-    // Check if we have a real regional voice
-    const hasLocalVoice = matchedVoices.length > 0;
-    
-    // Prepare text: Transliterate ONLY if we DON'T have a local voice and it's a Devanagari language
-    const cleanText = prepareTextForSpeech(textToRead, language, !hasLocalVoice);
-    if (!cleanText) return;
-
-    const utterance = new SpeechSynthesisUtterance(cleanText);
-    
-    if (hasLocalVoice) {
-      utterance.lang = targetLang;
-      // Preference: Google -> Natural -> Any matched
-      let selectedVoice = matchedVoices.find(v => v.name.includes('Google')) ||
-                         matchedVoices.find(v => v.name.includes('Natural')) ||
-                         matchedVoices[0];
-      if (selectedVoice) utterance.voice = selectedVoice;
-    }
-
-    // Natural tone adjustments for a friendlier feel
-    utterance.rate = language === 'hi' ? 1.0 : 1.0; // Fast enough as requested
-    utterance.pitch = 1.0; 
-    
-    utterance.onstart = () => setIsSpeaking(true);
-    utterance.onend = () => setIsSpeaking(false);
-    utterance.onerror = (e) => {
-      console.error("SpeechSynthesis error:", e);
-      setIsSpeaking(false);
-    };
-    
-    currentUtteranceRef.current = utterance;
-    window.speechSynthesis.speak(utterance);
   };
 
   const toggleVoice = () => {
@@ -1125,7 +1143,12 @@ export default function App() {
 
   const speakWeatherInsights = () => {
     if (!weather) return;
-    const weatherText = `${t.fieldWeather} for ${weather.locationName}. ${weather.temp} degrees. ${weather.condition}. ${t.diseaseRisk}: ${weather.riskLevel}.`;
+    const firstName = user?.displayName?.split(' ')[0] || 'Kisan Bhai';
+    
+    const weatherText = language === 'hi' ? 
+      `नमस्ते ${firstName}, यहाँ ${weather.locationName} का मौसम अपडेट है। अभी तापमान ${weather.temp} डिग्री है और ${weather.condition} की स्थिति है। रोग का जोखिम ${weather.riskLevel} है। मेरा सुझाव है कि आप ${weather.farmingSuggestion} पर ध्यान दें।` :
+      `Hello ${firstName}, here is your weather update for ${weather.locationName}. It's currently ${weather.temp} degrees with ${weather.condition}. The disease risk is ${weather.riskLevel}, so I suggest you focus on ${weather.farmingSuggestion}.`;
+      
     setLastSpeakableText(weatherText);
     speak(weatherText, true);
   };
@@ -1280,11 +1303,12 @@ export default function App() {
                <div className="w-2 h-2 rounded-full bg-success animate-pulse"></div>
                <span className="text-[0.7rem] font-black text-primary uppercase tracking-wide">{t.online}</span>
             </div>
-            <button 
-              onClick={toggleVoice} 
+            <button
+              onClick={() => isSpeaking ? agriVoice.stop() : handleBriefMe()}
               className={`p-2.5 rounded-xl transition-all hover:scale-105 active:scale-95 ${isSpeaking ? 'bg-error text-white shadow-lg shadow-error/20' : 'bg-primary text-white shadow-lg shadow-primary/20'}`}
               title={isSpeaking ? "Stop Speaking" : "Read Aloud"}
             >
+
               {isSpeaking ? <VolumeX className="w-5 h-5" /> : <Volume2 className="w-5 h-5" />}
             </button>
             <div className="relative">
@@ -2492,7 +2516,10 @@ export default function App() {
                 onClick={() => {
                   setIsOnboarded(true);
                   if (user) localStorage.setItem(`onboarded_${user.uid}`, 'true');
-                  speak(`${t.welcome}. ${t.onboarding1} ${t.onboarding2} ${t.onboarding3}`);
+                  const welcomeMsg = language === 'hi' ? 
+                    `नमस्ते! मैं हूँ आपका कृषि सहायक। मैं आपकी फसलों की बीमारियों को पहचानने, आपको मौसम की जानकारी देने और खेती के लिए सही सलाह देने में आपकी मदद करूँगा। चलिए शुरू करते हैं!` :
+                    `Hello! I am Krishi Shayak, your personal farming assistant. I am here to help you identify plant diseases, give you weather updates, and provide expert farming advice. Let's get started!`;
+                  speak(welcomeMsg);
                 }}
                 className="w-full py-4 bg-green-600 text-white rounded-xl font-bold hover:bg-green-700 transition-colors shadow-lg shadow-green-200"
               >
