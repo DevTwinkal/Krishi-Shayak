@@ -55,15 +55,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   });
 
   try {
-    const ai = new GoogleGenAI(apiKey);
-    const model = ai.getGenerativeModel({
+    const ai = new GoogleGenAI({ apiKey });
+    const result = await ai.models.generateContent({
       model: "gemini-1.5-flash",
-      systemInstruction: systemInstruction,
-      tools: [{ googleSearch: {} } as any],
+      contents,
+      config: {
+        systemInstruction,
+        tools: [{ googleSearch: {} } as any],
+      },
     });
-
-    const result = await model.generateContent({ contents });
-    const responseText = result.response.text();
+    const responseText = result.text;
     if (!responseText) throw new Error("Empty response from AI expert.");
     return res.status(200).json({ response: responseText });
   } catch (error: any) {

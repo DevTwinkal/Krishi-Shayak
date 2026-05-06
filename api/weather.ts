@@ -30,11 +30,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   - sprayingAlert (advice in ${langName})`;
 
   try {
-    const ai = new GoogleGenAI(apiKey);
-    const model = ai.getGenerativeModel({
+    const ai = new GoogleGenAI({ apiKey });
+    const result = await ai.models.generateContent({
       model: "gemini-1.5-flash",
-      tools: [{ googleSearch: {} } as any],
-      generationConfig: {
+      contents: [{ role: "user", parts: [{ text: prompt }] }],
+      config: {
         responseMimeType: "application/json",
         responseSchema: {
           type: Type.OBJECT,
@@ -54,8 +54,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       },
     });
 
-    const result = await model.generateContent(prompt);
-    return res.status(200).json(JSON.parse(result.response.text() || "{}"));
+    return res.status(200).json(JSON.parse(result.text ?? "{}"));
   } catch (error: any) {
     console.error("Weather insights failed:", error);
     return res.status(500).json({ error: error.message || "Weather insights failed" });

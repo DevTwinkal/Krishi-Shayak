@@ -34,10 +34,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   CRITICAL: Respond ENTIRELY in ${langName}. No markdown. No bullets. Use commas and ellipses for natural breath.`;
 
   try {
-    const ai = new GoogleGenAI(apiKey);
-    const model = ai.getGenerativeModel({ model: "gemini-1.5-flash" });
-    const response = await model.generateContent(prompt);
-    return res.status(200).json({ briefing: response.response.text() });
+    const ai = new GoogleGenAI({ apiKey });
+    const result = await ai.models.generateContent({
+      model: "gemini-1.5-flash",
+      contents: [{ role: "user", parts: [{ text: prompt }] }],
+    });
+    return res.status(200).json({ briefing: result.text ?? "" });
   } catch (error: any) {
     console.error("Sentient briefing failed:", error);
     return res.status(200).json({

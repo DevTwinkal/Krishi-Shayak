@@ -11,11 +11,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (!base64Image) return res.status(400).json({ error: "base64Image is required" });
 
   try {
-    const ai = new GoogleGenAI(apiKey);
-    const model = ai.getGenerativeModel({ model: "gemini-1.5-flash" });
-    const response = await model.generateContent({
+    const ai = new GoogleGenAI({ apiKey });
+    const result = await ai.models.generateContent({
+      model: "gemini-1.5-flash",
       contents: [
         {
+          role: "user",
           parts: [
             { text: "Is this image clear enough for agricultural disease detection? Respond with 'YES' or 'NO' and a reason." },
             { inlineData: { data: base64Image, mimeType: "image/jpeg" } },
@@ -24,7 +25,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       ],
     });
 
-    const text = response.response.text() || "";
+    const text = result.text ?? "";
     return res.status(200).json({
       isUsable: text.toUpperCase().includes("YES"),
       reason: text,

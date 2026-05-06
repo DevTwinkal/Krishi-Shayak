@@ -29,18 +29,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   `;
 
   try {
-    const ai = new GoogleGenAI(apiKey);
-    const model = ai.getGenerativeModel({ model: "gemini-1.5-flash" });
-    const response = await model.generateContent({
+    const ai = new GoogleGenAI({ apiKey });
+    const result = await ai.models.generateContent({
+      model: "gemini-1.5-flash",
       contents: [
         {
+          role: "user",
           parts: [
             { text: prompt },
             { inlineData: { data: base64Image, mimeType: "image/jpeg" } },
           ],
         },
       ],
-      generationConfig: {
+      config: {
         systemInstruction:
           "You are a senior agricultural scientist specializing in Indian crops and pests. Your advice must be based on reputable research papers (e.g., ICAR, IARI) and scientifically proven methods suitable for the Indian climate and soil conditions.",
         responseMimeType: "application/json",
@@ -65,8 +66,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       },
     });
 
-    const text = response.response.text();
-    return res.status(200).json(JSON.parse(text || "{}"));
+    return res.status(200).json(JSON.parse(result.text ?? "{}"));
   } catch (error: any) {
     console.error("Image Analysis failed:", error);
     return res.status(500).json({ error: error.message || "Image analysis failed" });
