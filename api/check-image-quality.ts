@@ -25,7 +25,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       ],
     });
 
-    const text = result.text() || "";
+    const text = result.text || "";
     return res.status(200).json({
       isUsable: text.toUpperCase().includes("YES"),
       reason: text,

@@ -54,7 +54,7 @@ Return a JSON object with these exact fields:
       },
     });
 
-    return res.status(200).json(JSON.parse(result.text() || "{}"));
+    return res.status(200).json(JSON.parse(result.text || "{}"));
   } catch (error: any) {
     console.error("Weather insights failed:", error);
     return res.status(500).json({ error: error.message || "Weather insights failed" });

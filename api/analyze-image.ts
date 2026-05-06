@@ -64,7 +64,7 @@ IMPORTANT: Provide all text descriptions, plant names, and treatment details in 
       },
     });
 
-    return res.status(200).json(JSON.parse(result.text() || "{}"));
+    return res.status(200).json(JSON.parse(result.text || "{}"));
   } catch (error: any) {
     console.error("Image Analysis failed:", error);
     return res.status(500).json({ error: error.message || "Image analysis failed" });

@@ -61,7 +61,7 @@ Remember the previous parts of the conversation to provide a fluid and helpful e
       },
     });
 
-    const responseText = result.text();
+    const responseText = result.text;
     if (!responseText) throw new Error("Empty response from AI expert.");
     return res.status(200).json({ response: responseText });
   } catch (error: any) {

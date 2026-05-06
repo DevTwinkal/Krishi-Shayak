@@ -39,7 +39,7 @@ CRITICAL: Respond ENTIRELY in ${langName}. No markdown. No bullets. Use commas a
       model: "gemini-1.5-flash",
       contents: [{ role: "user", parts: [{ text: prompt }] }],
     });
-    return res.status(200).json({ briefing: result.text() });
+    return res.status(200).json({ briefing: result.text });
   } catch (error: any) {
     console.error("Sentient briefing failed:", error);
     return res.status(200).json({
