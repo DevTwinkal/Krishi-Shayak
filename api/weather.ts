@@ -17,24 +17,24 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   const langName = languageNames[language] || "English";
 
-  const prompt = `Provide the current weather and agricultural insights for ${location} in India.
-  Return a JSON object with: 
-  - temp (number, Celsius)
-  - condition (string in ${langName})
-  - humidity (number, percentage)
-  - windSpeed (number, km/h)
-  - locationName (string)
-  - riskLevel (Low/Medium/High for disease based on weather)
-  - farmingSuggestion (advice in ${langName})
-  - irrigationAdvice (advice in ${langName})
-  - sprayingAlert (advice in ${langName})`;
+  const prompt = `Provide current weather and agricultural insights for ${location} in India.
+Return a JSON object with these exact fields:
+- temp (number, Celsius)
+- condition (string in ${langName})
+- humidity (number, percentage)
+- windSpeed (number, km/h)
+- locationName (string)
+- riskLevel ("Low", "Medium", or "High" — disease risk based on weather)
+- farmingSuggestion (string in ${langName})
+- irrigationAdvice (string in ${langName})
+- sprayingAlert (string in ${langName})`;
 
   try {
-    const ai = new GoogleGenAI(apiKey);
-    const model = ai.getGenerativeModel({
+    const ai = new GoogleGenAI({ apiKey });
+    const result = await ai.models.generateContent({
       model: "gemini-1.5-flash",
-      tools: [{ googleSearch: {} } as any],
-      generationConfig: {
+      contents: [{ role: "user", parts: [{ text: prompt }] }],
+      config: {
         responseMimeType: "application/json",
         responseSchema: {
           type: Type.OBJECT,
@@ -54,8 +54,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       },
     });
 
-    const result = await model.generateContent(prompt);
-    return res.status(200).json(JSON.parse(result.response.text() || "{}"));
+    return res.status(200).json(JSON.parse(result.text() || "{}"));
   } catch (error: any) {
     console.error("Weather insights failed:", error);
     return res.status(500).json({ error: error.message || "Weather insights failed" });
