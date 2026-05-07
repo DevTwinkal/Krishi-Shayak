@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { User, onAuthStateChanged, GoogleAuthProvider, signInWithPopup, signOut } from 'firebase/auth';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
-import { auth, db, OperationType, handleFirestoreError } from '../lib/firebase';
+import { auth, db } from '../lib/firebase';
 
 interface FirebaseContextType {
   user: User | null;
@@ -36,7 +36,8 @@ export function FirebaseProvider({ children }: { children: React.ReactNode }) {
             });
           }
         } catch (error) {
-          handleFirestoreError(error, OperationType.WRITE, `users/${currentUser.uid}`);
+          // Log but do NOT re-throw — a failed user-doc write must not block login
+          console.error('Failed to create user document:', error);
         }
       }
       setUser(currentUser);

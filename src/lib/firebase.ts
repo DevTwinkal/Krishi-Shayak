@@ -23,7 +23,6 @@ let db: ReturnType<typeof getFirestore>;
 try {
   db = initializeFirestore(app, {
     localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }),
-    experimentalForceLongPolling: true,
   }, firestoreDatabaseId);
 } catch {
   db = getFirestore(app);
