@@ -16,8 +16,8 @@ app.use((_req, res, next) => {
   next();
 });
 
+const HF_CHAT_API = "https://router.huggingface.co/hf-inference/v1/chat/completions";
 const MODEL = "mistralai/Mistral-7B-Instruct-v0.3";
-const HF_CHAT_API = `https://api-inference.huggingface.co/models/${MODEL}/v1/chat/completions`;
 const HF_CAPTION_API = "https://api-inference.huggingface.co/models/Salesforce/blip-image-captioning-large";
 
 const languageNames: Record<string, string> = {

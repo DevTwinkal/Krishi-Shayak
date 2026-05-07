@@ -1,7 +1,7 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 
+const HF_API = "https://router.huggingface.co/hf-inference/v1/chat/completions";
 const MODEL = "mistralai/Mistral-7B-Instruct-v0.3";
-const HF_API = `https://api-inference.huggingface.co/models/${MODEL}/v1/chat/completions`;
 
 const languageNames: Record<string, string> = {
   en: "English", hi: "Hindi", mr: "Marathi", te: "Telugu", ta: "Tamil",
