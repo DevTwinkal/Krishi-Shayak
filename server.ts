@@ -16,8 +16,7 @@ app.use((_req, res, next) => {
   next();
 });
 
-const HF_CHAT_API = "https://router.huggingface.co/hf-inference/v1/chat/completions";
-const MODEL = "mistralai/Mistral-7B-Instruct-v0.3";
+const HF_CHAT_API = "https://api-inference.huggingface.co/models/mistralai/Mistral-7B-Instruct-v0.3";
 const HF_CAPTION_API = "https://api-inference.huggingface.co/models/Salesforce/blip-image-captioning-large";
 
 const languageNames: Record<string, string> = {
@@ -25,15 +24,15 @@ const languageNames: Record<string, string> = {
   bn: "Bengali", gu: "Gujarati", kn: "Kannada", ml: "Malayalam", pa: "Punjabi",
 };
 
-const hfChat = async (token: string, messages: any[], maxTokens = 1024, temperature = 0.7) => {
+const hfGenerate = async (token: string, inputs: string, maxTokens = 512, temperature = 0.7): Promise<string> => {
   const response = await fetch(HF_CHAT_API, {
     method: "POST",
     headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ model: MODEL, messages, max_tokens: maxTokens, temperature }),
+    body: JSON.stringify({ inputs, parameters: { max_new_tokens: maxTokens, temperature, return_full_text: false } }),
   });
   if (!response.ok) throw new Error(await response.text());
   const data = await response.json();
-  return data.choices?.[0]?.message?.content || "";
+  return Array.isArray(data) ? (data[0]?.generated_text || "") : (data?.generated_text || "");
 };
 
 const captionImage = async (token: string, base64Image: string): Promise<string> => {
@@ -59,22 +58,9 @@ app.post("/api/analyze-image", async (req, res) => {
 
   try {
     const caption = await captionImage(token, base64Image);
-    const prompt = `You are a senior agricultural scientist specialising in Indian crops and pests. An image has been described as: "${caption}"
-
-Return ONLY a valid JSON object:
-{
-  "plantName": "<plant name in ${langName}>",
-  "issueDetected": "<pest/disease or 'Healthy' in ${langName}>",
-  "confidence": <0-100>,
-  "explanation": "<scientific explanation referencing ICAR/IARI in ${langName}>",
-  "treatments": {
-    "organic": "<organic treatment in ${langName}>",
-    "chemical": "<IPM chemical treatment in ${langName}>"
-  }
-}`;
-
-    const text = await hfChat(token, [{ role: "user", content: prompt }], 768, 0.3);
-    const jsonMatch = text.match(/\{[\s\S]*\}/);
+    const inputs = `<s>[INST] You are a senior agricultural scientist for India (ICAR/IARI). Image shows: "${caption}". Output ONLY raw JSON no markdown: {"plantName":"<in ${langName}>","issueDetected":"<pest/disease or Healthy in ${langName}>","confidence":<0-100>,"explanation":"<2-3 sentences in ${langName}>","treatments":{"organic":"<in ${langName}>","chemical":"<in ${langName}>"}} [/INST]`;
+    const text = await hfGenerate(token, inputs, 500, 0.2);
+    const jsonMatch = text.match(/\{[\s\S]*?\}/);
     if (!jsonMatch) throw new Error("No JSON in response");
     res.json(JSON.parse(jsonMatch[0]));
   } catch (error: any) {
@@ -91,16 +77,17 @@ app.post("/api/chat", async (req, res) => {
   if (!message) return res.status(400).json({ error: "message is required" });
 
   const langName = languageNames[language] || "English";
-  const systemPrompt = `You are Krishi Shayak, a warm, trusted Indian farming companion. Speak like a knowledgeable friend over chai. Be conversational, encouraging, and deeply respectful. Use phrases like "Hmm, let me see...", "Ah, I understand,". Start with a warm acknowledgement. Use short clear sentences. No markdown, no bullet points. Respond ENTIRELY in ${langName}. Context: ${extraContext || "None."}`;
+  const system = `You are Krishi Shayak, a warm, trusted Indian farming companion. Speak like a knowledgeable friend over chai. Be conversational and encouraging. No markdown, no bullet points. Respond ENTIRELY in ${langName}. Context: ${extraContext || "None."}`;
 
-  const messages = [
-    { role: "system", content: systemPrompt },
-    ...history.map((h: any) => ({ role: h.role === "model" ? "assistant" : "user", content: h.text })),
-    { role: "user", content: message },
-  ];
+  let inputs = `<s>[INST] ${system}\n\n${history.length ? history[0].text : message} [/INST]`;
+  for (let i = 1; i < history.length; i++) {
+    const h = history[i];
+    inputs += h.role === "model" ? ` ${h.text}</s>` : `[INST] ${h.text} [/INST]`;
+  }
+  if (history.length) inputs += `[INST] ${message} [/INST]`;
 
   try {
-    const text = await hfChat(token, messages);
+    const text = await hfGenerate(token, inputs, 512, 0.7);
     res.json({ response: text });
   } catch (error: any) {
     console.error("Chat failed:", error);
@@ -116,24 +103,12 @@ app.post("/api/weather", async (req, res) => {
   if (!location) return res.status(400).json({ error: "location is required" });
 
   const langName = languageNames[language] || "English";
-  const prompt = `Provide current weather and agricultural insights for ${location}, India in ${new Date().toLocaleString("en-IN", { month: "long" })}.
-
-Return ONLY valid JSON:
-{
-  "temp": <Celsius number>,
-  "condition": "<weather in ${langName}>",
-  "humidity": <0-100>,
-  "windSpeed": <km/h>,
-  "locationName": "<full location name>",
-  "riskLevel": "<Low/Medium/High disease risk>",
-  "farmingSuggestion": "<farming advice in ${langName}>",
-  "irrigationAdvice": "<irrigation advice in ${langName}>",
-  "sprayingAlert": "<spraying advice in ${langName}>"
-}`;
+  const month = new Date().toLocaleString("en-IN", { month: "long" });
+  const inputs = `<s>[INST] Agricultural weather expert for India. Provide seasonal insights for ${location} in ${month}. Output ONLY raw JSON no markdown: {"temp":<Celsius>,"condition":"<in ${langName}>","humidity":<0-100>,"windSpeed":<km/h>,"locationName":"<full name>","riskLevel":"<Low or Medium or High>","farmingSuggestion":"<in ${langName}>","irrigationAdvice":"<in ${langName}>","sprayingAlert":"<in ${langName}>"} [/INST]`;
 
   try {
-    const text = await hfChat(token, [{ role: "user", content: prompt }], 512, 0.3);
-    const jsonMatch = text.match(/\{[\s\S]*\}/);
+    const text = await hfGenerate(token, inputs, 400, 0.2);
+    const jsonMatch = text.match(/\{[\s\S]*?\}/);
     if (!jsonMatch) throw new Error("No JSON in response");
     res.json(JSON.parse(jsonMatch[0]));
   } catch (error: any) {
@@ -166,10 +141,10 @@ app.post("/api/briefing", async (req, res) => {
   if (!state) return res.status(400).json({ error: "state is required" });
 
   const langName = languageNames[language] || "English";
-  const prompt = `You are Krishi Shayak, a warm farming companion. Farmer ${state.userName} is in ${state.location}. Weather: ${state.weather?.temp}°C, ${state.weather?.condition}. Disease risk: ${state.weather?.riskLevel}. ${state.recentDetection ? `Last detected ${state.recentDetection.issue} on ${state.recentDetection.plant}.` : "No recent issues."} Give a warm 3-4 sentence spoken overview starting with "Ah, ${state.userName}...". Respond in ${langName}. No markdown.`;
+  const inputs = `<s>[INST] You are Krishi Shayak, a warm farming companion. Farmer ${state.userName} in ${state.location}. Weather: ${state.weather?.temp}°C ${state.weather?.condition}, risk: ${state.weather?.riskLevel}. ${state.recentDetection ? `Last detected ${state.recentDetection.issue} on ${state.recentDetection.plant}.` : "No recent issues."} Give warm 3-4 sentence overview starting "Ah, ${state.userName}...". No markdown. Respond in ${langName}. [/INST]`;
 
   try {
-    const briefing = await hfChat(token, [{ role: "user", content: prompt }], 300, 0.8);
+    const briefing = await hfGenerate(token, inputs, 200, 0.8);
     res.json({ briefing });
   } catch (error: any) {
     console.error("Briefing failed:", error);

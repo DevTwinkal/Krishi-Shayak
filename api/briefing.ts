@@ -1,7 +1,6 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 
-const HF_API = "https://router.huggingface.co/hf-inference/v1/chat/completions";
-const MODEL = "mistralai/Mistral-7B-Instruct-v0.3";
+const HF_API = "https://api-inference.huggingface.co/models/mistralai/Mistral-7B-Instruct-v0.3";
 
 const languageNames: Record<string, string> = {
   en: "English", hi: "Hindi", mr: "Marathi", te: "Telugu", ta: "Tamil",
@@ -19,16 +18,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   const langName = languageNames[language] || "English";
 
-  const prompt = `You are Krishi Shayak, a warm farming companion standing next to the farmer in their field.
+  const inputs = `<s>[INST] You are Krishi Shayak, a warm farming companion standing next to the farmer in their field. Farmer ${state.userName} is in ${state.location}. Weather: ${state.weather?.temp}°C, ${state.weather?.condition}. Disease risk: ${state.weather?.riskLevel}. ${state.recentDetection ? `Last detected ${state.recentDetection.issue} on ${state.recentDetection.plant}.` : "No recent issues."}
 
-Current farm conditions:
-- Farmer: ${state.userName}
-- Location: ${state.location}
-- Weather: ${state.weather?.temp}°C, ${state.weather?.condition}
-- Disease Risk: ${state.weather?.riskLevel}
-- Recent activity: ${state.recentDetection ? `Last detected ${state.recentDetection.issue} on ${state.recentDetection.plant}` : "No recent issues"}
-
-Give a warm 3-4 sentence spoken overview — talk ABOUT the conditions naturally, like a trusted friend. Start with "Ah, ${state.userName}...". Use commas and ellipses for natural pauses. No markdown, no bullet points. Respond ENTIRELY in ${langName}.`;
+Give a warm 3-4 sentence spoken overview starting with "Ah, ${state.userName}...". Talk about the conditions naturally, like a trusted friend. Use commas and ellipses for natural pauses. No markdown. Respond ENTIRELY in ${langName}. [/INST]`;
 
   try {
     const response = await fetch(HF_API, {
@@ -38,23 +30,20 @@ Give a warm 3-4 sentence spoken overview — talk ABOUT the conditions naturally
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: MODEL,
-        messages: [{ role: "user", content: prompt }],
-        max_tokens: 300,
-        temperature: 0.8,
+        inputs,
+        parameters: { max_new_tokens: 200, temperature: 0.8, return_full_text: false },
       }),
     });
 
     if (!response.ok) {
-      const err = await response.text();
-      console.error("HF briefing error:", err);
+      console.error("HF briefing error:", await response.text());
       return res.status(200).json({
-        briefing: `Ah, ${state.userName}... I'm looking at your farm data right now. The weather seems ${state.weather?.condition || "quite pleasant"} today. Everything appears to be in order for now.`,
+        briefing: `Ah, ${state.userName}... I'm looking at your farm in ${state.location} right now. The weather seems ${state.weather?.condition || "quite pleasant"} today at ${state.weather?.temp || "–"}°C. Everything appears to be in order for now.`,
       });
     }
 
     const data = await response.json();
-    const briefing = data.choices?.[0]?.message?.content || "";
+    const briefing: string = Array.isArray(data) ? (data[0]?.generated_text || "") : (data?.generated_text || "");
     return res.status(200).json({ briefing });
   } catch (error: any) {
     console.error("Briefing failed:", error);
