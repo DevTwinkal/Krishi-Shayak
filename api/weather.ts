@@ -1,5 +1,7 @@
-import { GoogleGenAI, Type } from "@google/genai";
 import type { VercelRequest, VercelResponse } from "@vercel/node";
+
+const HF_API = "https://api-inference.huggingface.co/v1/chat/completions";
+const MODEL = "mistralai/Mistral-7B-Instruct-v0.3";
 
 const languageNames: Record<string, string> = {
   en: "English", hi: "Hindi", mr: "Marathi", te: "Telugu", ta: "Tamil",
@@ -9,52 +11,58 @@ const languageNames: Record<string, string> = {
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
 
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) return res.status(500).json({ error: "Server misconfiguration: API key missing" });
+  const token = process.env.HF_TOKEN;
+  if (!token) return res.status(500).json({ error: "Server misconfiguration: HF_TOKEN missing" });
 
   const { location, language = "en" } = req.body;
   if (!location) return res.status(400).json({ error: "location is required" });
 
   const langName = languageNames[language] || "English";
 
-  const prompt = `Provide the current weather and agricultural insights for ${location} in India.
-  Return a JSON object with: 
-  - temp (number, Celsius)
-  - condition (string in ${langName})
-  - humidity (number, percentage)
-  - windSpeed (number, km/h)
-  - locationName (string)
-  - riskLevel (Low/Medium/High for disease based on weather)
-  - farmingSuggestion (advice in ${langName})
-  - irrigationAdvice (advice in ${langName})
-  - sprayingAlert (advice in ${langName})`;
+  const prompt = `You are an agricultural weather expert for India. Provide realistic weather and farming insights for ${location}, India.
+
+Return ONLY a valid JSON object with these exact fields (no extra text, no markdown):
+{
+  "temp": <number in Celsius>,
+  "condition": "<weather condition in ${langName}>",
+  "humidity": <percentage 0-100>,
+  "windSpeed": <km/h>,
+  "locationName": "<full location name>",
+  "riskLevel": "<Low, Medium, or High for crop disease risk based on weather>",
+  "farmingSuggestion": "<practical farming advice in ${langName}>",
+  "irrigationAdvice": "<irrigation advice in ${langName}>",
+  "sprayingAlert": "<pesticide/spraying advice in ${langName}>"
+}
+
+Base the values on typical seasonal weather patterns for ${location} in India during ${new Date().toLocaleString("en-IN", { month: "long" })}. Return only the JSON, nothing else.`;
 
   try {
-    const ai = new GoogleGenAI({ apiKey });
-    const result = await ai.models.generateContent({
-      model: "gemini-2.0-flash",
-      contents: [{ role: "user", parts: [{ text: prompt }] }],
-      config: {
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: Type.OBJECT,
-          properties: {
-            temp: { type: Type.NUMBER },
-            condition: { type: Type.STRING },
-            humidity: { type: Type.NUMBER },
-            windSpeed: { type: Type.NUMBER },
-            locationName: { type: Type.STRING },
-            riskLevel: { type: Type.STRING },
-            farmingSuggestion: { type: Type.STRING },
-            irrigationAdvice: { type: Type.STRING },
-            sprayingAlert: { type: Type.STRING },
-          },
-          required: ["temp", "condition", "humidity", "windSpeed", "locationName", "riskLevel", "farmingSuggestion", "irrigationAdvice", "sprayingAlert"],
-        },
+    const response = await fetch(HF_API, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
       },
+      body: JSON.stringify({
+        model: MODEL,
+        messages: [{ role: "user", content: prompt }],
+        max_tokens: 512,
+        temperature: 0.3,
+      }),
     });
 
-    return res.status(200).json(JSON.parse(result.text ?? "{}"));
+    if (!response.ok) {
+      throw new Error(await response.text());
+    }
+
+    const data = await response.json();
+    const text = data.choices?.[0]?.message?.content || "";
+
+    const jsonMatch = text.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) throw new Error("No JSON found in response");
+
+    const parsed = JSON.parse(jsonMatch[0]);
+    return res.status(200).json(parsed);
   } catch (error: any) {
     console.error("Weather insights failed:", error);
     return res.status(500).json({ error: error.message || "Weather insights failed" });

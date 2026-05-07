@@ -1,5 +1,7 @@
-import { GoogleGenAI } from "@google/genai";
 import type { VercelRequest, VercelResponse } from "@vercel/node";
+
+const HF_API = "https://api-inference.huggingface.co/v1/chat/completions";
+const MODEL = "mistralai/Mistral-7B-Instruct-v0.3";
 
 const languageNames: Record<string, string> = {
   en: "English", hi: "Hindi", mr: "Marathi", te: "Telugu", ta: "Tamil",
@@ -9,71 +11,51 @@ const languageNames: Record<string, string> = {
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
 
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) return res.status(500).json({ error: "Server misconfiguration: API key missing" });
+  const token = process.env.HF_TOKEN;
+  if (!token) return res.status(500).json({ error: "Server misconfiguration: HF_TOKEN missing" });
 
-  const { history = [], message, language = "en", base64Image, extraContext } = req.body;
+  const { history = [], message, language = "en", extraContext } = req.body;
   if (!message) return res.status(400).json({ error: "message is required" });
 
   const langName = languageNames[language] || "English";
-  const systemInstruction = `You are Krishi Shayak, a warm, trusted, and highly knowledgeable Indian farming companion. 
-      You speak to the farmer like a trusted friend over a cup of chai. Your tone is helpful, encouraging, and deeply respectful.
-      
-      Respond based on scientifically proven data, citing Indian agricultural research (ICAR, university papers) naturally in conversation. 
-      Focus on sustainable and effective practices for Indian farmers.
-      
-      PERSONALITY & TONE:
-      - Be extremely conversational. Use phrases like "Hmm, let me see...", "Oh, that's interesting,", "Well, you know," "Ah, I understand."
-      - Start your responses with a warm acknowledgement of the farmer's question.
-      - Use short, clear sentences. Avoid sounding like a textbook.
-      
-      CONTEXT:
-      ${extraContext || "No additional context provided."}
-      
-      CRITICAL FOR VOICE DELIVERY (HUMANISTIC MODE):
-      - DO NOT use any markdown, bolding (**), or bullet points (* or -).
-      - NEVER provide lists in a vertical format. Instead of "1. Do X, 2. Do Y", say "First, I would suggest you do X... and then, you might want to try Y."
-      - Use commas, periods, and ellipses (...) frequently to create natural breathing pauses.
-      - You MUST respond ENTIRELY in ${langName}. 
-      - Use local farming terminology where appropriate to sound natural to a farmer.
-      
-      Remember the previous parts of the conversation to provide a fluid and helpful experience.`;
 
-  const contents = history.map((h: any) => ({
-    role: h.role,
-    parts: [{ text: h.text }],
-  }));
+  const systemPrompt = `You are Krishi Shayak, a warm, trusted Indian farming companion. You speak like a knowledgeable friend over chai. Be conversational, encouraging, and deeply respectful. Use phrases like "Hmm, let me see...", "Ah, I understand," "Well, you know,". Start with a warm acknowledgement. Use short clear sentences. No markdown, no bullet points, no numbered lists. Use commas and ellipses for natural pauses. Respond ENTIRELY in ${langName}. Context: ${extraContext || "None."}`;
 
-  const userParts: any[] = [{ text: message }];
-  if (base64Image) {
-    userParts.push({ inlineData: { data: base64Image, mimeType: "image/jpeg" } });
-  }
-
-  contents.push({
-    role: "user",
-    parts: userParts,
-  });
+  const messages = [
+    { role: "system", content: systemPrompt },
+    ...history.map((h: any) => ({
+      role: h.role === "model" ? "assistant" : "user",
+      content: h.text,
+    })),
+    { role: "user", content: message },
+  ];
 
   try {
-    const ai = new GoogleGenAI({ apiKey });
-    const result = await ai.models.generateContent({
-      model: "gemini-2.0-flash",
-      contents,
-      config: {
-        systemInstruction,
-        tools: [{ googleSearch: {} } as any],
+    const response = await fetch(HF_API, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
       },
+      body: JSON.stringify({ model: MODEL, messages, max_tokens: 1024, temperature: 0.7 }),
     });
-    const responseText = result.text;
-    if (!responseText) throw new Error("Empty response from AI expert.");
+
+    if (!response.ok) {
+      const err = await response.text();
+      if (response.status === 429) {
+        return res.status(200).json({
+          response: "I'm a little busy helping other farmers right now. Could you please wait a moment and ask me again?",
+        });
+      }
+      throw new Error(err);
+    }
+
+    const data = await response.json();
+    const responseText = data.choices?.[0]?.message?.content || "";
+    if (!responseText) throw new Error("Empty response");
     return res.status(200).json({ response: responseText });
   } catch (error: any) {
     console.error("Chat failed:", error);
-    if (error.message?.includes("429")) {
-      return res.status(200).json({
-        response: "I'm a little busy helping other farmers right now. Could you please wait a minute and ask me again? I want to give you my full attention.",
-      });
-    }
     return res.status(200).json({
       response: "I'm sorry, I'm having a little trouble connecting to my knowledge base. Can we try again in a moment?",
     });
