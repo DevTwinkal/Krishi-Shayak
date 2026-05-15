@@ -1,219 +1,124 @@
-# Krishi Shayak
+# 🌾 Krishi Shayak (कृषि सहायक)
+### *Empowering Indian Farmers with AI-Driven Insights & Care*
 
-An AI-powered agricultural assistant for Indian farmers. Provides plant disease detection from photos, weather-based farming insights, and an expert chat advisor — all in 10 Indian languages.
-
-## Features
-
-- **Plant Disease Detection** — Upload a photo of any leaf or crop; get instant diagnosis with organic and chemical treatment options grounded in ICAR/IARI research
-- **Weather Insights** — Enter your location for real-time farming advice: disease risk, irrigation timing, and spraying alerts
-- **Expert Chat** — Conversational agricultural advisor that understands Indian farming context and regional terminology
-- **Voice Output** — Natural text-to-speech in Hindi, Marathi, Telugu, Tamil, Bengali, Gujarati, Kannada, Malayalam, Punjabi, and English
-- **Multilingual** — Full UI and AI responses in all 10 languages
-- **Offline History** — Previous detections and reports stored locally via Firebase
+[![Vercel Deployment](https://img.shields.io/badge/Deployed%20on-Vercel-black?style=for-the-badge&logo=vercel)](https://krishi-shayak.vercel.app)
+[![React](https://img.shields.io/badge/React-19-blue?style=for-the-badge&logo=react)](https://react.dev)
+[![Firebase](https://img.shields.io/badge/Firebase-Auth%20%26%20Firestore-orange?style=for-the-badge&logo=firebase)](https://firebase.google.com)
 
 ---
 
-## Running Locally
+## 📖 Overview
 
-### Prerequisites
+**Krishi Shayak** is a state-of-the-art agricultural assistant designed specifically for the Indian farming landscape. By leveraging cutting-edge AI models (Llama 3.3 & Llama 4), it provides farmers with instant diagnostic tools, real-time weather-based advice, and an expert conversational partner — all accessible in **10 Indian languages** with high-quality voice support.
 
-- **Node.js v20+** — [Download](https://nodejs.org)
-- **A GROQ API key** (free, no credit card) — [console.groq.com](https://console.groq.com)
-- **A Firebase project** — [console.firebase.google.com](https://console.firebase.google.com)
+Our mission is to bridge the gap between scientific agricultural research and ground-level farming, helping reduce crop loss and improve yields through accessible technology.
 
 ---
 
-### Step 1 — Clone and install
+## ✨ Key Features
 
+### 📸 Smart Plant Disease Detection
+- **Instant Diagnosis**: Upload or capture a leaf/crop photo to identify pests, diseases, or deficiencies.
+- **Expert Recommendations**: Get detailed treatment plans including both **Organic (Prakritik Kheti)** and **Chemical (IPM)** options.
+- **High Confidence**: Powered by multimodal AI models trained on diverse agricultural datasets.
+
+### 🎙️ Advanced Multilingual TTS
+- **Regional Clarity**: Natural-sounding voice output in 10 languages (Hindi, Marathi, Telugu, Tamil, Bengali, Gujarati, Kannada, Malayalam, Punjabi, and English).
+- **Intelligent Script Detection**: Automatically detects script types (e.g., Devanagari vs. Latin) to ensure perfect pronunciation of regional terms.
+- **Listen to Results**: Farmers can listen to diagnostic reports and weather updates, making the app accessible to everyone.
+
+### ⛅ AI-Powered Weather Insights
+- **Precision Advice**: Location-aware farming suggestions based on real-time temperature, humidity, and wind conditions.
+- **Risk Alerts**: Specific warnings for disease outbreaks, irrigation needs, and optimal spraying windows.
+
+### 🤖 Krishi Expert AI Chat
+- **Conversational Companion**: A friendly, knowledgeable AI that understands regional farming terminology and Indian agricultural contexts.
+- **Context-Aware**: Remembers your farm's history and current weather to provide personalized advice.
+
+---
+
+## 🛠️ Technology Stack
+
+| Layer | Technology |
+| :--- | :--- |
+| **Frontend** | React 19, Vite, Tailwind CSS, Framer Motion |
+| **Backend** | Node.js (Express), Vercel Serverless Functions |
+| **Database/Auth** | Firebase Auth, Firestore |
+| **AI Infrastructure** | GROQ Cloud (Llama 3.3 70B & Llama 4 Scout 17B) |
+| **Voice Synthesis** | Web Speech API with Regional Optimization |
+| **Icons & UI** | Lucide React |
+
+---
+
+## 🚀 Getting Started
+
+### 1. Prerequisites
+- **Node.js v20+** installed.
+- **Firebase Project**: Set up at [console.firebase.google.com](https://console.firebase.google.com).
+- **GROQ API Key**: Obtain for free at [console.groq.com](https://console.groq.com).
+
+### 2. Installation
 ```bash
-git clone <your-repo-url>
+# Clone the repository
+git clone https://github.com/DevTwinkal/Krishi-Shayak.git
+
+# Navigate to project folder
 cd Krishi_Shayak
+
+# Install dependencies
 npm install
 ```
 
----
-
-### Step 2 — Get your free GROQ API key
-
-1. Go to [https://console.groq.com](https://console.groq.com) and sign up (free)
-2. Click **API Keys** in the left sidebar
-3. Click **Create API Key**, give it a name, and copy the key
-
----
-
-### Step 3 — Set up Firebase
-
-1. Go to [https://console.firebase.google.com](https://console.firebase.google.com)
-2. Click **Add project**, give it a name, and follow the setup wizard
-3. In your project, go to **Build → Authentication** and enable the **Email/Password** sign-in method
-4. Go to **Build → Firestore Database**, click **Create database**, and choose **Start in test mode**
-5. Go to **Project Settings** (gear icon) → **Your apps** → click the web icon (`</>`) to register a web app
-6. Copy the config values shown — you will need them in the next step
-
----
-
-### Step 4 — Create your `.env` file
-
-Copy the example file and fill in your values:
-
-```bash
-cp .env.example .env
-```
-
-Then open `.env` and fill in:
+### 3. Environment Setup
+Create a `.env` file in the root directory and add the following keys:
 
 ```env
-# AI — your GROQ key from Step 2
-GROQ_API_KEY=gsk_xxxxxxxxxxxxxxxxxxxxxxxxxxxx
+# AI API Keys
+GROQ_API_KEY=your_groq_key_here
+OPENWEATHER_API_KEY=your_optional_weather_key_here
 
-# Weather — optional but recommended (free at https://openweathermap.org/api)
-# Without this, AI-generated seasonal estimates are used instead
-# OPENWEATHER_API_KEY=
-
-# Firebase — values from Step 3 (Project Settings → Your Web App)
-VITE_FIREBASE_API_KEY=
-VITE_FIREBASE_AUTH_DOMAIN=
-VITE_FIREBASE_PROJECT_ID=
-VITE_FIREBASE_STORAGE_BUCKET=
-VITE_FIREBASE_MESSAGING_SENDER_ID=
-VITE_FIREBASE_APP_ID=
-
-# App URL — keep this as-is for local development
-VITE_APP_URL=http://localhost:3000
+# Firebase Config (Get these from Project Settings > Your Apps)
+VITE_FIREBASE_PROJECT_ID=your_project_id
+VITE_FIREBASE_APP_ID=your_app_id
+VITE_FIREBASE_API_KEY=your_api_key
+VITE_FIREBASE_AUTH_DOMAIN=your_auth_domain
+VITE_FIREBASE_STORAGE_BUCKET=your_storage_bucket
+VITE_FIREBASE_MESSAGING_SENDER_ID=your_sender_id
 ```
 
----
-
-### Step 5 — Start the app
-
+### 4. Running the App
 ```bash
+# Start both Frontend & API Server
 npm run dev:all
 ```
-
-This starts two processes:
-
-- **API server** on `http://localhost:3001` (handles AI and weather calls)
-- **Frontend** on `http://localhost:3000` (the React app)
-
-Open [http://localhost:3000](http://localhost:3000) in your browser.
-
-> If you only want the frontend (e.g. for UI work), use `npm run dev`.
-> If you only want the API server, use `npm run server`.
+- **Frontend**: [http://localhost:3000](http://localhost:3000)
+- **API Server**: [http://localhost:3001](http://localhost:3001)
 
 ---
 
-### Optional — Real weather data
+## 📦 Deployment
 
-By default the weather feature uses AI-generated seasonal estimates for Indian locations. For accurate live weather:
-
-1. Sign up free at [https://openweathermap.org/api](https://openweathermap.org/api)
-2. Go to **API keys** and copy your key
-3. Uncomment and fill in `.env`:
-   ```env
-   OPENWEATHER_API_KEY=your_key_here
-   ```
+### Vercel Deployment
+This project is pre-configured for Vercel:
+1. Connect your GitHub repository to Vercel.
+2. Add your `.env` variables in the Vercel Dashboard.
+3. **Critical**: Add your Vercel domain to the **Authorized Domains** list in the Firebase Console (Authentication > Settings).
 
 ---
 
-## Project Structure
-
-```
-├── server.ts            # Express API server (local dev — handles all /api routes)
-├── api/                 # Vercel Serverless Functions (production deployment)
-│   ├── analyze-image.ts
-│   ├── chat.ts
-│   ├── weather.ts
-│   ├── briefing.ts
-│   └── check-image-quality.ts
-├── src/
-│   ├── App.tsx          # Main React app
-│   ├── components/      # UI components
-│   ├── services/        # API client and voice service
-│   └── lib/             # Firebase and utilities
-├── .env.example         # Template for environment variables
-└── vite.config.ts       # Vite config with /api proxy to port 3001
-```
-
-**Local dev architecture:**
-
-```
-Browser (port 3000)
-  └─ Vite dev server
-       └─ /api/* → proxied to Express server (port 3001)
-                         └─ GROQ API (AI)
-                         └─ Firebase (auth + database)
-```
+## 🗺️ Roadmap
+- [ ] **Offline Mode**: Local caching of AI models for zero-connectivity areas.
+- [ ] **Market Prices**: Real-time Mandi price tracking for local crops.
+- [ ] **Soil Testing Integration**: Direct upload of soil reports for fertilization plans.
+- [ ] **Community Forum**: A space for farmers to share knowledge locally.
 
 ---
 
-## Deploying to Vercel
+## 🤝 Contribution
+Contributions are welcome! Please feel free to submit a Pull Request or open an issue for any bugs or feature requests.
 
-1. Push your code to GitHub
-2. Import the repo on [vercel.com](https://vercel.com)
-3. Add the same environment variables from your `.env` under **Settings → Environment Variables** in the Vercel dashboard
-4. Deploy — the `/api/*.ts` files run as Vercel Serverless Functions automatically
-
----
-
-## AI Models Used (all free tier)
-
-| Feature                 | Model                             | Provider |
-| ----------------------- | --------------------------------- | -------- |
-| Chat, weather, briefing | Llama 3.3 70B Versatile           | GROQ     |
-| Plant disease detection | Llama 4 Scout 17B (multimodal)    | GROQ     |
-| Image quality check     | Llama 4 Scout 17B (multimodal)    | GROQ     |
-
-GROQ free tier limits: ~6000 tokens/minute. Sufficient for development and light usage. All endpoints fall back to mock responses if the quota is hit.
+## 📄 License
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
 ---
-
-## Sharing / Distributing as a ZIP
-
-To share this project pre-configured (no setup required for the recipient):
-
-**Mac / Linux — run from inside the project folder:**
-```bash
-cd /path/to/Krishi_Shayak
-zip -r ../krishi-shayak.zip . --exclude "*/dist/*" --exclude "*/.DS_Store"
-```
-
-**Windows — run from inside the project folder:**
-```powershell
-Compress-Archive -Path . -DestinationPath ..\krishi-shayak.zip
-```
-
-The recipient just unzips and runs:
-```bash
-npm run dev:all
-```
-
-That's it — no API key setup, no `npm install`, nothing else needed.
-
-> All scripts work on both **Mac and Windows** without any changes.
-
----
-
-## Troubleshooting
-
-**`npm run dev:all` shows API errors or 500 responses**
-
-- Check that `GROQ_API_KEY` is set in `.env` and the key is valid
-- Make sure the API server (port 3001) started — look for `✅ Krishi Shayak API server` in the terminal
-
-**Firebase auth not working**
-
-- Confirm Email/Password is enabled in Firebase Console → Authentication → Sign-in method
-- Double-check all six `VITE_FIREBASE_*` values in `.env` match your Firebase project settings exactly
-
-**Port already in use**
-
-- Mac/Linux: `lsof -ti:3001 | xargs kill` (API server) or `lsof -ti:3000 | xargs kill` (Vite)
-- Windows: `netstat -ano | findstr :3001` to find the PID, then `taskkill /PID <pid> /F`
-
-**Weather shows mock data**
-
-- This is expected when `OPENWEATHER_API_KEY` is not set. Add it for live weather.
-
----
-
-\*Built for Indian Farmers
+*Built with ❤️ for the Farmers of India.*
