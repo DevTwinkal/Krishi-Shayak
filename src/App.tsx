@@ -36,11 +36,14 @@ import {
   Send,
   VolumeX,
   Search,
-  CloudRain
+  CloudRain,
+  Mail,
+  Lock,
+  UserPlus,
+  LogIn
 } from 'lucide-react';
 import { useFirebase } from './components/FirebaseProvider';
 import { analyzePlantImage, chatWithExpert, enhanceImageQuality, getAIPoweredWeather, generateEmbedding, cosineSimilarity, getAppSentientBriefing } from './services/geminiService';
-import { transliterateDevanagari } from './lib/transliterator';
 import { compressImage } from './lib/utils';
 import { agriVoice } from './services/voiceService';
 // import { fetchWeather, WeatherData, fetchWeatherByCity } from './services/weatherService';
@@ -49,76 +52,6 @@ import { collection, addDoc, query, where, orderBy, onSnapshot, Timestamp, getDo
 import { db, handleFirestoreError, OperationType } from './lib/firebase';
 
 type Tab = 'dashboard' | 'detect' | 'chat' | 'history' | 'settings';
-
-// Helper to strip markdown and prepare text for TTS
-const AGRI_PHONETIC_MAP: Record<string, Record<string, string>> = {
-  mr: {
-    'watering': 'वॉटरिंग',
-    'fertilizer': 'फर्टिलायझर',
-    'pesticide': 'पेस्टिसाइड',
-    'soil': 'सॉइल',
-    'crop': 'क्रॉप',
-    'disease': 'डिसीज',
-    'organic': 'ऑरगॅनिक',
-    'chemical': 'केमिकल',
-    'spray': 'स्प्रे',
-    'yield': 'यील्ड',
-    'nitrogen': 'नायट्रोजन',
-    'phosphorus': 'फॉस्फरस',
-    'potassium': 'पोटॅशियम'
-  },
-  hi: {
-    'watering': 'वाटरिंग',
-    'fertilizer': 'फर्टिलाइजर',
-    'pesticide': 'पेस्टिसाइड',
-    'soil': 'सॉइल',
-    'crop': 'क्रॉप',
-    'disease': 'डिसीज',
-    'organic': 'ऑर्गेनिक',
-    'chemical': 'केमिकल',
-    'spray': 'स्प्रे',
-    'pa': 'यील्ड'
-    }
-    };
-
-    export const PREFERRED_VOICES: Record<string, string[]> = {
-  'hi': ['hi-IN-Neural2-A', 'hi-IN-Neural2-D', 'Google हिन्दी', 'hi-IN-Wavenet-A', 'hi-IN-Standard-A', 'Microsoft Hemant'],
-  'mr': ['Google मराठी', 'mr-IN-Wavenet-A', 'mr-IN-Standard-A', 'Microsoft Yashwant'],
-  'te': ['Google తెలుగు', 'te-IN-Standard-A', 'Microsoft Shruti'],
-  'ta': ['Google தமிழ்', 'ta-IN-Wavenet-A', 'ta-IN-Standard-A', 'Microsoft Valluvar'],
-  'bn': ['Google বাংলা', 'bn-IN-Wavenet-A', 'bn-IN-Standard-A', 'Microsoft Hemant'],
-  'gu': ['Google ગુજરાતી', 'gu-IN-Wavenet-A', 'gu-IN-Standard-A', 'Microsoft Kalpana'],
-  'kn': ['Google ಕನ್ನಡ', 'kn-IN-Wavenet-A', 'kn-IN-Standard-A', 'Microsoft Sapna'],
-  'ml': ['Google മലയാളം', 'ml-IN-Wavenet-A', 'ml-IN-Standard-A', 'Microsoft Midhun'],
-  'pa': ['Google ਪੰਜਾਬੀ', 'pa-IN-Wavenet-A', 'pa-IN-Standard-A', 'Microsoft Hemant'],
-  'en': ['en-IN-Neural2-A', 'en-IN-Neural2-D', 'en-US-Neural2-F', 'Google UK English Female', 'Google US English', 'en-IN-Wavenet-A', 'en-GB-Wavenet-A']
-};
-
-    const prepareTextForSpeech = (text: string, lang: string, shouldTransliterate: boolean = false) => {
-
-  let cleanText = text
-    .replace(/^[\s]*[-+*][\s]+/gm, '') // Remove list markers
-    .replace(/[#*`~]/g, '') // Remove Markdown symbols
-    .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1') // Extract text from links
-    .replace(/\s+/g, ' ') // Collapse spaces
-    .trim();
-
-  // If not English, handle mixed-language technical terms
-  if (lang !== 'en' && AGRI_PHONETIC_MAP[lang]) {
-    const map = AGRI_PHONETIC_MAP[lang];
-    Object.keys(map).forEach(word => {
-      const regex = new RegExp(`\\b${word}\\b`, 'gi');
-      cleanText = cleanText.replace(regex, map[word]);
-    });
-  }
-
-  // Transliterate Devanagari to Latin for English-only engines
-  if (shouldTransliterate && (lang === 'hi' || lang === 'mr')) {
-    return transliterateDevanagari(cleanText);
-  }
-
-  return cleanText;
-};
 
 const POPULAR_CITIES = [
   "Wardha", "Nagpur", "Pune", "Nashik", "Mumbai", 
@@ -145,7 +78,31 @@ interface WeatherData {
 }
 
 export default function App() {
-  const { user, loading, login, logout } = useFirebase();
+  const { 
+    user, loading, error: authError, login, loginWithEmail, signupWithEmail, continueAsGuest, logout, setError: setAuthError 
+  } = useFirebase();
+  const [authMode, setAuthMode] = useState<'login' | 'signup'>('login');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [fullName, setFullName] = useState('');
+  const [isAuthLoading, setIsAuthLoading] = useState(false);
+
+  const handleAuth = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsAuthLoading(true);
+    try {
+      if (authMode === 'login') {
+        await loginWithEmail(email, password);
+      } else {
+        await signupWithEmail(email, password, fullName);
+      }
+    } catch (err) {
+      console.error("Auth action failed:", err);
+    } finally {
+      setIsAuthLoading(false);
+    }
+  };
+
   const [activeTab, setActiveTab] = useState<Tab>('dashboard');
   const [language, setLanguage] = useState('en');
   const [weather, setWeather] = useState<WeatherData | null>(null);
@@ -198,6 +155,13 @@ export default function App() {
       setIsSpeaking(false);
     }
   };
+
+  const handleLogout = async () => {
+    agriVoice.stop();
+    setIsSpeaking(false);
+    await logout();
+  };
+
   const [isOnboarded, setIsOnboarded] = useState(true); // Default true for now, will check in useEffect
   const currentUtteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
 
@@ -863,6 +827,9 @@ export default function App() {
 
   const handleBase64ImageAnalysis = async (base64Url: string) => {
     if (!user) return;
+    agriVoice.stop();
+    setIsSpeaking(false);
+    setDetectionResult(null);
     setIsAnalyzing(true);
     try {
       const base64 = base64Url.split(',')[1];
@@ -874,32 +841,46 @@ export default function App() {
       }
 
       const result = await analyzePlantImage(base64, language);
-      setDetectionResult(result);
+      
+      // Fallback if the AI returns an empty or malformed object
+      const safeResult = {
+        plantName: result.plantName || "Unknown Crop",
+        issueDetected: result.issueDetected || "Could not detect issue",
+        confidence: result.confidence || 0,
+        explanation: result.explanation || "The analysis failed to provide an explanation.",
+        treatments: {
+          organic: result.treatments?.organic || "N/A",
+          chemical: result.treatments?.chemical || "N/A"
+        }
+      };
+
+      setDetectionResult(safeResult);
+      setIsAnalyzing(false);
 
       await addDoc(collection(db, 'reports'), {
         userId: user.uid,
         imageUrl: base64Url,
-        detectionResult: result.issueDetected,
-        confidence: result.confidence,
-        treatment: JSON.stringify(result.treatments),
-        plantName: result.plantName,
-        explanation: result.explanation,
+        detectionResult: safeResult.issueDetected,
+        confidence: safeResult.confidence,
+        treatment: JSON.stringify(safeResult.treatments),
+        plantName: safeResult.plantName,
+        explanation: safeResult.explanation,
         timestamp: Timestamp.now(),
         weatherContext: weather
       });
 
-      if (result.issueDetected && result.explanation) {
-        const tr = result.treatments;
+      if (safeResult.issueDetected && safeResult.explanation) {
+        const tr = safeResult.treatments;
         // Language-specific conversational structure
-        const intro = language === 'hi' ? `मैंने फोटो का विश्लेषण किया है। आपके ${result.plantName} में ${result.issueDetected} की समस्या लग रही है।` : 
-                      language === 'mr' ? `मी फोटोचे विश्लेषण केले आहे. तुमच्या ${result.plantName} मध्ये ${result.issueDetected} ची समस्या असल्याचे दिसून येत आहे.` :
-                      `I've analyzed the photo. It looks like your ${result.plantName} has ${result.issueDetected}.`;
+        const intro = language === 'hi' ? `मैंने फोटो का विश्लेषण किया है। आपके ${safeResult.plantName} में ${safeResult.issueDetected} की समस्या लग रही है।` : 
+                      language === 'mr' ? `मी फोटोचे विश्लेषण केले आहे. तुमच्या ${safeResult.plantName} मध्ये ${safeResult.issueDetected} ची समस्या असल्याचे दिसून येत आहे.` :
+                      `I've analyzed the photo. It looks like your ${safeResult.plantName} has ${safeResult.issueDetected}.`;
         
         const treatmentInfo = language === 'hi' ? `जैविक उपचार के लिए, ${tr.organic}। रासायनिक विकल्प के लिए, ${tr.chemical}।` :
                              language === 'mr' ? `सेंद्रिय उपचारासाठी, ${tr.organic}। रासायनिक पर्यायासाठी, ${tr.chemical}।` :
                              `For organic treatment, you can try ${tr.organic}. For chemical options, ${tr.chemical}.`;
 
-        const textToSpeak = `${intro} ${result.explanation} ${treatmentInfo}`;
+        const textToSpeak = `${intro} ${safeResult.explanation} ${treatmentInfo}`;
         setLastSpeakableText(textToSpeak);
         speak(textToSpeak);
       }
@@ -957,6 +938,7 @@ export default function App() {
         window.speechSynthesis.removeEventListener('voiceschanged', handleVoicesChanged);
         window.removeEventListener('click', unlockSpeech);
         window.removeEventListener('touchstart', unlockSpeech);
+        agriVoice.stop();
       };
     }
   }, []);
@@ -1028,6 +1010,8 @@ export default function App() {
   useEffect(() => {
     if (activeTab !== 'detect') {
       stopCamera();
+      agriVoice.stop();
+      setIsSpeaking(false);
     }
   }, [activeTab]);
 
@@ -1053,6 +1037,8 @@ export default function App() {
     reader.onloadend = async () => {
       const compressedUrl = await compressImage(reader.result as string);
       handleBase64ImageAnalysis(compressedUrl);
+      // Reset input value to allow re-uploading the same file
+      if (e.target) e.target.value = '';
     };
     reader.readAsDataURL(file);
   };
@@ -1192,10 +1178,122 @@ export default function App() {
 
   if (!user) {
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center p-6 bg-bg text-center">
-        <Leaf className="w-16 h-16 text-primary mb-6" />
-        <h1 className="text-4xl font-bold text-primary mb-4">Krishi Shayak</h1>
-        <button onClick={login} className="btn-bento py-4 px-8 text-lg">Sign in with Google</button>
+      <div className="min-h-screen bg-bg flex items-center justify-center p-6">
+        <motion.div 
+          initial={{ opacity: 0, scale: 0.9 }}
+          animate={{ opacity: 1, scale: 1 }}
+          className="w-full max-w-md bg-white rounded-[2.5rem] shadow-2xl shadow-primary/10 border border-border p-8 md:p-10"
+        >
+          <div className="flex flex-col items-center mb-8">
+            <div className="w-16 h-16 bg-primary rounded-2xl flex items-center justify-center text-white mb-4 shadow-lg shadow-primary/20 transform -rotate-6">
+              <Leaf className="w-10 h-10" />
+            </div>
+            <h1 className="text-3xl font-black text-primary tracking-tighter">Krishi Shayak</h1>
+            <p className="text-muted font-bold text-sm mt-1 uppercase tracking-widest opacity-60">Empowering Farmers</p>
+          </div>
+
+          <div className="flex p-1 bg-bg rounded-2xl mb-8">
+            <button 
+              onClick={() => { setAuthMode('login'); setAuthError(null); }}
+              className={`flex-1 py-3 rounded-xl font-black text-xs uppercase tracking-widest transition-all ${authMode === 'login' ? 'bg-white text-primary shadow-sm' : 'text-muted'}`}
+            >
+              Login
+            </button>
+            <button 
+              onClick={() => { setAuthMode('signup'); setAuthError(null); }}
+              className={`flex-1 py-3 rounded-xl font-black text-xs uppercase tracking-widest transition-all ${authMode === 'signup' ? 'bg-white text-primary shadow-sm' : 'text-muted'}`}
+            >
+              Signup
+            </button>
+          </div>
+
+          <form onSubmit={handleAuth} className="space-y-4">
+            {authMode === 'signup' && (
+              <div className="relative">
+                <User className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-muted" />
+                <input 
+                  type="text" 
+                  placeholder="Full Name" 
+                  required 
+                  value={fullName}
+                  onChange={(e) => setFullName(e.target.value)}
+                  className="w-full bg-bg border border-border rounded-2xl py-4 pl-12 pr-4 font-bold text-sm focus:border-primary/40 focus:ring-4 focus:ring-primary/5 outline-none transition-all"
+                />
+              </div>
+            )}
+            <div className="relative">
+              <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-muted" />
+              <input 
+                type="email" 
+                placeholder="Email Address" 
+                required 
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                className="w-full bg-bg border border-border rounded-2xl py-4 pl-12 pr-4 font-bold text-sm focus:border-primary/40 focus:ring-4 focus:ring-primary/5 outline-none transition-all"
+              />
+            </div>
+            <div className="relative">
+              <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-muted" />
+              <input 
+                type="password" 
+                placeholder="Password" 
+                required 
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className="w-full bg-bg border border-border rounded-2xl py-4 pl-12 pr-4 font-bold text-sm focus:border-primary/40 focus:ring-4 focus:ring-primary/5 outline-none transition-all"
+              />
+            </div>
+
+            {authError && (
+              <motion.div 
+                initial={{ opacity: 0, y: -10 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="p-4 bg-error/5 border border-error/10 rounded-2xl text-error text-xs font-bold flex items-center gap-3"
+              >
+                <AlertTriangle className="w-4 h-4 shrink-0" />
+                {authError}
+              </motion.div>
+            )}
+
+            <button 
+              disabled={isAuthLoading}
+              type="submit" 
+              className="w-full bg-primary text-white font-black py-4 rounded-2xl shadow-xl shadow-primary/20 hover:scale-[1.02] active:scale-[0.98] transition-all disabled:opacity-50 disabled:scale-100 flex items-center justify-center gap-3 uppercase tracking-widest text-sm"
+            >
+              {isAuthLoading ? (
+                <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+              ) : (
+                <>
+                  {authMode === 'login' ? <LogIn className="w-4 h-4" /> : <UserPlus className="w-4 h-4" />}
+                  {authMode === 'login' ? 'Sign In' : 'Create Account'}
+                </>
+              )}
+            </button>
+          </form>
+
+          <div className="relative my-8 text-center">
+            <div className="absolute inset-0 flex items-center">
+              <div className="w-full border-t border-border"></div>
+            </div>
+            <span className="relative px-4 bg-white text-[0.6rem] font-black text-muted uppercase tracking-[0.2em]">Or continue with</span>
+          </div>
+
+          <div className="grid grid-cols-1 gap-4">
+            <button 
+              onClick={login}
+              className="flex items-center justify-center gap-3 bg-white border border-border py-4 rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-bg transition-all shadow-sm"
+            >
+              <img src="https://www.google.com/favicon.ico" className="w-4 h-4" alt="Google" />
+              Google Sign-In
+            </button>
+            <button 
+              onClick={continueAsGuest}
+              className="flex items-center justify-center gap-3 bg-bg py-4 rounded-2xl font-black text-xs uppercase tracking-widest text-muted hover:text-primary transition-all"
+            >
+              Continue as Guest
+            </button>
+          </div>
+        </motion.div>
       </div>
     );
   }
@@ -1234,7 +1332,7 @@ export default function App() {
                   <div onClick={() => { setActiveTab('settings'); setIsSidebarOpen(false); }} className={`sidebar-item ${activeTab === 'settings' ? 'sidebar-item-active' : ''}`}><Settings /> {t.settings}</div>
                 </nav>
               </div>
-              <div className="mt-auto p-6"><button onClick={logout} className="w-full flex items-center gap-3 text-error font-bold p-3">Logout</button></div>
+              <div className="mt-auto p-6"><button onClick={handleLogout} className="w-full flex items-center gap-3 text-error font-bold p-3">Logout</button></div>
             </motion.aside>
           </>
         )}
@@ -1281,7 +1379,7 @@ export default function App() {
                 <div className="text-[0.6rem] text-muted font-bold truncate">Professional Farmer</div>
               </div>
             </div>
-            <button onClick={logout} className="w-full py-2 bg-white border border-border rounded-xl text-error font-black text-[0.65rem] uppercase tracking-widest hover:bg-error hover:text-white transition-all shadow-sm flex items-center justify-center gap-2">
+            <button onClick={handleLogout} className="w-full py-2 bg-white border border-border rounded-xl text-error font-black text-[0.65rem] uppercase tracking-widest hover:bg-error hover:text-white transition-all shadow-sm flex items-center justify-center gap-2">
               <LogOut className="w-3 h-3" /> {t.logout || "Logout"}
             </button>
           </div>
@@ -1820,9 +1918,42 @@ export default function App() {
                   className="bento-card p-6 space-y-6"
                 >
                   <div className="flex items-center justify-between">
-                    <h3 className="text-2xl font-bold text-primary">{detectionResult.plantName}</h3>
-                    <div className="bg-[#e8f5e9] text-[#2e7d32] px-4 py-1 rounded-full font-bold">
-                      {detectionResult.confidence}% {t.confidence}
+                    <div className="flex flex-col">
+                      <h3 className="text-2xl font-bold text-primary">{detectionResult.plantName}</h3>
+                      <button 
+                        onClick={() => {
+                          if (isSpeaking) {
+                            agriVoice.stop();
+                            setIsSpeaking(false);
+                          } else {
+                            const tr = detectionResult.treatments;
+                            const intro = language === 'hi' ? `मैंने फोटो का विश्लेषण किया है। आपके ${detectionResult.plantName} में ${detectionResult.issueDetected} की समस्या लग रही है।` : 
+                                          language === 'mr' ? `मी फोटोचे विश्लेषण केले आहे. तुमच्या ${detectionResult.plantName} मध्ये ${detectionResult.issueDetected} ची समस्या असल्याचे दिसून येत आहे.` :
+                                          `I've analyzed the photo. It looks like your ${detectionResult.plantName} has ${detectionResult.issueDetected}.`;
+                            
+                            const treatmentInfo = language === 'hi' ? `जैविक उपचार के लिए, ${tr.organic}। रासायनिक विकल्प के लिए, ${tr.chemical}।` :
+                                                 language === 'mr' ? `सेंद्रिय उपचारासाठी, ${tr.organic}। रासायनिक पर्यायासाठी, ${tr.chemical}।` :
+                                                 `For organic treatment, you can try ${tr.organic}. For chemical options, ${tr.chemical}.`;
+
+                            const textToSpeak = `${intro} ${detectionResult.explanation} ${treatmentInfo}`;
+                            speak(textToSpeak, true);
+                          }
+                        }}
+                        className={`flex items-center gap-2 mt-2 px-3 py-1.5 rounded-xl transition-all w-fit ${isSpeaking ? 'bg-error/10 text-error animate-pulse' : 'bg-primary/10 text-primary hover:bg-primary/20'}`}
+                      >
+                        {isSpeaking ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
+                        <span className="text-[10px] font-black uppercase tracking-widest">
+                          {isSpeaking ? "Speaking..." : "Listen Result"}
+                        </span>
+                      </button>
+                    </div>
+                    <div className="flex flex-col items-end gap-2">
+                      <div className="bg-[#e8f5e9] text-[#2e7d32] px-4 py-1 rounded-full font-bold">
+                        {detectionResult.confidence}% {t.confidence}
+                      </div>
+                      {!isSpeaking && lastSpeakableText && (
+                        <span className="text-[9px] font-bold text-muted uppercase tracking-tighter opacity-50">Stopped</span>
+                      )}
                     </div>
                   </div>
 
@@ -1851,15 +1982,32 @@ export default function App() {
                     </div>
                   </div>
 
-                  <button 
-                    onClick={() => {
-                      setActiveTab('chat');
-                      handleSendMessage(`Tell me more about ${detectionResult.issueDetected} on ${detectionResult.plantName}.`);
-                    }}
-                    className="w-full py-3 text-primary font-bold border-2 border-primary rounded-xl hover:bg-primary hover:text-white transition-colors"
-                  >
-                    {t.askExpertDetails}
-                  </button>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <button 
+                      onClick={() => {
+                        setActiveTab('chat');
+                        handleSendMessage(`Tell me more about ${detectionResult.issueDetected} on ${detectionResult.plantName}.`);
+                      }}
+                      className="w-full py-4 text-primary font-bold border-2 border-primary rounded-2xl hover:bg-primary/5 transition-all flex items-center justify-center gap-2"
+                    >
+                      <Bot className="w-5 h-5" />
+                      {t.askExpertDetails}
+                    </button>
+                    
+                    <button 
+                      onClick={() => {
+                        setDetectionResult(null);
+                        setIsAnalyzing(false);
+                        agriVoice.stop();
+                        setIsSpeaking(false);
+                        window.scrollTo({ top: 0, behavior: 'smooth' });
+                      }}
+                      className="w-full py-4 bg-primary text-white font-black uppercase tracking-widest text-[11px] rounded-2xl hover:bg-emerald-700 transition-all shadow-lg shadow-primary/20 flex items-center justify-center gap-2"
+                    >
+                      <RefreshCcw className="w-4 h-4" />
+                      New Scan
+                    </button>
+                  </div>
                 </motion.div>
               )}
             </motion.div>
